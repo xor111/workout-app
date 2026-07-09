@@ -20,6 +20,7 @@ body {
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
 }
 
 #app {
@@ -173,7 +174,30 @@ body {
   padding: 16px;
   margin-bottom: 12px;
 }
-.ex-card h4 { font-size: 17.5px; font-weight: 700; margin-bottom: 8px; }
+.ex-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ex-card h4 { font-size: 17.5px; font-weight: 700; }
+.video-btn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  padding-left: 2px;
+}
+.video-btn:active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 .ex-meta {
   display: flex;
   flex-wrap: wrap;
@@ -242,7 +266,7 @@ body {
   border-radius: 12px;
   color: var(--text);
   font-family: inherit;
-  font-size: 15px;
+  font-size: 16px; /* <16px dispara auto-zoom de iOS al enfocar */
   padding: 11px 13px;
   resize: none;
   line-height: 1.45;

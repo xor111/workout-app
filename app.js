@@ -252,10 +252,15 @@ function renderWorkout(id) {
       sectionHtml = `<div class="section-label">${esc(e.section)}</div>`;
       lastSection = e.section;
     }
+    const videoUrl = e.video
+      || `https://www.youtube.com/results?search_query=${encodeURIComponent(e.name.replace(/\(.*?\)/g, '').trim() + ' técnica tutorial')}`;
     return `
       ${sectionHtml}
       <div class="ex-card">
-        <h4>${esc(e.name)}</h4>
+        <div class="ex-head">
+          <h4>${esc(e.name)}</h4>
+          <a class="video-btn" href="${esc(videoUrl)}" target="_blank" rel="noopener" aria-label="Ver técnica en YouTube">▶</a>
+        </div>
         <div class="ex-meta">
           <span>${e.sets} × ${esc(e.reps)}</span>
           ${e.weight ? `<span class="weight">${esc(e.weight)}</span>` : ''}
