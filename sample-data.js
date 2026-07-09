@@ -14,7 +14,7 @@ const SAMPLE_DATA = {
       focus: 'Pecho, hombro, tríceps',
       warmup: ['5 min bici o remo suave', '2×15 band pull-aparts', '2×10 push-ups lentas'],
       exercises: [
-        { id: 'bench-press', name: 'Press de banca', sets: 4, reps: '8-10', weight: '60 kg', rest: '2-3 min', coach_note: 'Primera semana: quédate lejos del fallo, estamos calibrando pesos.' },
+        { id: 'bench-press', name: 'Press de banca', sets: 4, reps: '8-10', weight: '60 kg', rir: '2', rest: '2-3 min', coach_note: 'Primera semana: quédate lejos del fallo, estamos calibrando pesos.' },
         { id: 'overhead-press', name: 'Press militar con barra', sets: 3, reps: '8-10', weight: '35 kg', rest: '2 min' },
         { id: 'incline-db-press', name: 'Press inclinado con mancuernas', sets: 3, reps: '10-12', weight: '22 kg/lado', rest: '90s' },
         { id: 'lateral-raise', name: 'Elevaciones laterales', sets: 3, reps: '12-15', weight: '10 kg/lado', rest: '60s' },

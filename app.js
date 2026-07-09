@@ -92,10 +92,16 @@ async function refreshData() {
       if (note) cache.remoteNotes[w.id] = note.json;
     }));
     setCache(cache);
-    // Adopta notas remotas si no hay cambios locales sin subir
-    for (const [id, remote] of Object.entries(cache.remoteNotes)) {
-      const local = getNote(id);
-      if (!local || !local.dirty) setNote(id, { ...remote, dirty: false });
+    // Adopta notas remotas si no hay cambios locales sin subir;
+    // si la nota remota ya no existe, descarta la copia local limpia.
+    for (const w of idx.json.workouts) {
+      const remote = cache.remoteNotes[w.id];
+      const local = getNote(w.id);
+      if (remote) {
+        if (!local || !local.dirty) setNote(w.id, { ...remote, dirty: false });
+      } else if (local && !local.dirty) {
+        localStorage.removeItem('wk.note.' + w.id);
+      }
     }
     return true;
   } catch (e) {
@@ -245,6 +251,7 @@ function renderWorkout(id) {
         <div class="ex-meta">
           <span>${e.sets} × ${esc(e.reps)}</span>
           ${e.weight ? `<span class="weight">${esc(e.weight)}</span>` : ''}
+          ${e.rir ? `<span>RIR ${esc(e.rir)}</span>` : ''}
           ${e.rest ? `<span>⏱ ${esc(e.rest)}</span>` : ''}
         </div>
         ${e.coach_note ? `<div class="coach-note">💬 ${esc(e.coach_note)}</div>` : ''}
