@@ -240,12 +240,20 @@ function renderWorkout(id) {
     if (!note.exercises[e.id]) note.exercises[e.id] = { sets_done: 0, note: '' };
   }
 
+  const hasSections = w.exercises.some(e => e.section);
+  let lastSection = null;
   const exCards = w.exercises.map(e => {
     const en = note.exercises[e.id];
     const dots = Array.from({ length: e.sets }, (_, i) =>
       `<button class="set-dot ${i < en.sets_done ? 'on' : ''}" data-ex="${esc(e.id)}" data-set="${i + 1}">${i + 1}</button>`
     ).join('');
+    let sectionHtml = '';
+    if (e.section && e.section !== lastSection) {
+      sectionHtml = `<div class="section-label">${esc(e.section)}</div>`;
+      lastSection = e.section;
+    }
     return `
+      ${sectionHtml}
       <div class="ex-card">
         <h4>${esc(e.name)}</h4>
         <div class="ex-meta">
@@ -254,6 +262,7 @@ function renderWorkout(id) {
           ${e.rir ? `<span>RIR ${esc(e.rir)}</span>` : ''}
           ${e.rest ? `<span>⏱ ${esc(e.rest)}</span>` : ''}
         </div>
+        ${e.cue ? `<div class="cue">${esc(e.cue)}</div>` : ''}
         ${e.coach_note ? `<div class="coach-note">💬 ${esc(e.coach_note)}</div>` : ''}
         <div class="set-row"><span class="lbl">Series</span>${dots}</div>
         <textarea class="note-input" rows="1" data-exnote="${esc(e.id)}"
@@ -273,7 +282,7 @@ function renderWorkout(id) {
       <div class="focus">${esc(w.focus || '')}</div>
     </div>
     ${listSection('Calentamiento', w.warmup)}
-    <div class="section-label">Ejercicios</div>
+    ${hasSections ? '' : '<div class="section-label">Ejercicios</div>'}
     ${exCards}
     ${listSection('Enfriamiento', w.cooldown)}
     <div class="section-label">Nota del día</div>

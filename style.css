@@ -190,6 +190,13 @@ body {
 }
 .ex-meta .weight { color: var(--accent); }
 
+.cue {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
 .coach-note {
   background: var(--accent-dim);
   border-left: 3px solid var(--accent);
