@@ -302,6 +302,40 @@ textarea.day-note { min-height: 90px; }
 .btn-primary:active { filter: brightness(0.9); }
 .btn-primary:disabled { opacity: 0.55; }
 
+.bar-back {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 26px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.bar-back:active { background: var(--surface-2); }
+
+.btn-secondary {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 14px;
+  cursor: pointer;
+}
+.btn-secondary:active { background: var(--surface-2); }
+.btn-secondary:disabled { opacity: 0.55; }
+
 .sync-status {
   text-align: center;
   font-size: 13px;

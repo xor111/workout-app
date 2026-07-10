@@ -1,5 +1,7 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
+const APP_VERSION = '1.3';
+
 const $app = document.getElementById('app');
 
 // ---------- Storage ----------
@@ -181,7 +183,7 @@ function renderHome() {
 
   let cards = '';
   if (index?.workouts?.length) {
-    const sorted = [...index.workouts].sort((a, b) => b.date.localeCompare(a.date));
+    const sorted = [...index.workouts].sort((a, b) => a.date.localeCompare(b.date));
     cards = sorted.map(w => {
       const isToday = w.date === today;
       const note = getNote(w.id) || (demo ? SAMPLE_DATA.notes[w.id] : null);
@@ -294,6 +296,7 @@ function renderWorkout(id) {
     <textarea class="note-input day-note" id="day-note"
       placeholder="¿Cómo te fue hoy? Claude leerá esto para ajustar el siguiente workout.">${esc(note.day_note)}</textarea>
     <div class="save-bar">
+      <button class="bar-back" onclick="location.hash=''" aria-label="Volver al inicio">‹</button>
       <button class="btn-primary" id="save-btn">Guardar notas</button>
     </div>
     <div class="sync-status" id="sync-status">${syncStatusText(note)}</div>
@@ -387,7 +390,28 @@ function renderSettings() {
     </div>
     <div class="save-bar"><button class="btn-primary" id="save-settings">Guardar y probar conexión</button></div>
     <div class="settings-msg" id="settings-msg"></div>
+    <div class="section-label">App</div>
+    <button class="btn-secondary" id="force-refresh">Actualizar app</button>
+    <div class="sync-status">Workouts v${APP_VERSION}</div>
   `;
+
+  document.getElementById('force-refresh').addEventListener('click', async () => {
+    const btn = document.getElementById('force-refresh');
+    btn.disabled = true;
+    btn.textContent = 'Actualizando…';
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } finally {
+      location.reload();
+    }
+  });
 
   document.getElementById('save-settings').addEventListener('click', async () => {
     const msg = document.getElementById('settings-msg');

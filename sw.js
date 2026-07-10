@@ -1,6 +1,6 @@
 /* Service worker: cachea el shell de la app para que abra sin conexión.
    Las peticiones a api.github.com no se interceptan. */
-const CACHE = 'workouts-v1';
+const CACHE = 'workouts-v2';
 const SHELL = [
   './',
   'index.html',
@@ -28,9 +28,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== location.origin) return;
-  // Red primero (para recibir updates de la app), caché como respaldo offline.
+  // Red primero SIN caché HTTP (para que los updates lleguen al primer
+  // restart), caché del SW como respaldo offline.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-store' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
