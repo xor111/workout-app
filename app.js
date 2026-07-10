@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 
 const $app = document.getElementById('app');
 
@@ -186,15 +186,19 @@ function ensureAudio() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
-function beep(freq, dur, delay = 0) {
+const VOL_LEVELS = { bajo: 0.2, medio: 0.55, alto: 1.0 };
+const getVol = () => store.get('wk.vol', 'alto');
+
+function beep(freq, dur, delay = 0, soft = false) {
   if (!audioCtx) return;
   const t = audioCtx.currentTime + delay;
+  const vol = VOL_LEVELS[getVol()] * (soft ? 0.45 : 1);
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  o.type = 'sine';
+  o.type = 'square'; // más penetrante que sine con música de fondo
   o.frequency.value = freq;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.6, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(audioCtx.destination);
   o.start(t);
@@ -241,13 +245,19 @@ function startTimer(e) {
   beep(880, 0.15);
 }
 
+// Ventana de ticks por fase: prep completa, últimos 10s del descanso
+// (prepárate para la siguiente), últimos 5s de la serie (ya casi paras).
+const TICK_WINDOW = { ready: 10, rest: 10, work: 5 };
+
 function tickTimer() {
   if (!T || T.paused || T.done) return;
   const remainMs = T.endsAt - Date.now();
   const remain = Math.ceil(remainMs / 1000);
-  if (remain <= 3 && remain >= 1 && T.lastTick !== remain) {
+  const win = TICK_WINDOW[T.phases[T.idx].kind] ?? 3;
+  if (remain <= win && remain >= 1 && T.lastTick !== remain) {
     T.lastTick = remain;
-    beep(880, 0.1);
+    if (remain <= 3) beep(1100, 0.12);      // 3-2-1: más agudo
+    else beep(880, 0.07, 0, true);          // tick suave
   }
   if (remainMs <= 0) {
     T.idx++;
@@ -565,9 +575,28 @@ function renderSettings() {
     <div class="save-bar"><button class="btn-primary" id="save-settings">Guardar y probar conexión</button></div>
     <div class="settings-msg" id="settings-msg"></div>
     <div class="section-label">App</div>
+    <div class="field">
+      <label>Volumen de beeps del timer</label>
+      <div class="vol-row">
+        ${['bajo', 'medio', 'alto'].map(v =>
+          `<button class="vol-btn ${getVol() === v ? 'on' : ''}" data-vol="${v}">${v[0].toUpperCase() + v.slice(1)}</button>`
+        ).join('')}
+      </div>
+      <div class="hint">Toca una opción para escuchar una muestra.</div>
+    </div>
     <button class="btn-secondary" id="force-refresh">Actualizar app</button>
     <div class="sync-status">Workouts v${APP_VERSION}</div>
   `;
+
+  $app.querySelectorAll('.vol-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      store.set('wk.vol', btn.dataset.vol);
+      $app.querySelectorAll('.vol-btn').forEach(b => b.classList.toggle('on', b === btn));
+      ensureAudio();
+      beep(1100, 0.15);
+      beep(1320, 0.2, 0.25);
+    });
+  });
 
   document.getElementById('force-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('force-refresh');
