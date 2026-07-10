@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 
 const $app = document.getElementById('app');
 
@@ -260,19 +260,29 @@ function tickTimer() {
     else beep(880, 0.07, 0, true);          // tick suave
   }
   if (remainMs <= 0) {
-    T.idx++;
-    if (T.idx >= T.phases.length) {
-      T.done = true;
-      beep(1320, 0.25); beep(1320, 0.25, 0.35); beep(1760, 0.7, 0.7);
-      clearInterval(T.interval);
-      releaseWakeLock();
-      updateTimerDom();
-      return;
+    // Avanza las fases que correspondan, arrastrando el tiempo excedido.
+    // Si la app estuvo congelada en background (iOS), esto la pone en el
+    // punto real del ciclo al volver, aunque hayan pasado varias fases.
+    let over = -remainMs;
+    for (;;) {
+      T.idx++;
+      if (T.idx >= T.phases.length) {
+        T.done = true;
+        beep(1320, 0.25); beep(1320, 0.25, 0.35); beep(1760, 0.7, 0.7);
+        clearInterval(T.interval);
+        releaseWakeLock();
+        updateTimerDom();
+        return;
+      }
+      const durMs = T.phases[T.idx].dur * 1000;
+      if (over < durMs) {
+        T.endsAt = Date.now() + durMs - over;
+        break;
+      }
+      over -= durMs;
     }
-    const p = T.phases[T.idx];
-    T.endsAt = Date.now() + p.dur * 1000;
     T.lastTick = null;
-    if (p.kind === 'work') beep(1320, 0.5);
+    if (T.phases[T.idx].kind === 'work') beep(1320, 0.5);
     else { beep(660, 0.25); beep(660, 0.25, 0.35); }
   }
   updateTimerDom();
@@ -348,7 +358,10 @@ function releaseWakeLock() {
   wakeLock = null;
 }
 document.addEventListener('visibilitychange', () => {
-  if (T && !T.done && document.visibilityState === 'visible') requestWakeLock();
+  if (T && !T.done && document.visibilityState === 'visible') {
+    requestWakeLock();
+    tickTimer(); // ponte al día de inmediato tras volver de background
+  }
 });
 
 // ---------- Views ----------
