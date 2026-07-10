@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 
 const $app = document.getElementById('app');
 
@@ -175,6 +175,172 @@ function noteHasContent(note) {
   return Object.values(note.exercises || {}).some(e => e.sets_done > 0 || e.note?.trim());
 }
 
+// ---------- Interval timer ----------
+
+let audioCtx = null;
+let T = null;        // timer activo
+let wakeLock = null;
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function beep(freq, dur, delay = 0) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.6, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+
+function parseSeconds(str) {
+  if (!str) return null;
+  const tokens = [...str.matchAll(/(\d+(?:\.\d+)?)\s*(min|seg|s)?/gi)]
+    .map(m => ({ n: parseFloat(m[1]), u: m[2] ? m[2].toLowerCase() : null }));
+  if (!tokens.length) return null;
+  // rellena unidades faltantes con la del token siguiente ("2-3 min" → ambos min)
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (!tokens[i].u) tokens[i].u = (i + 1 < tokens.length && tokens[i + 1].u) ? tokens[i + 1].u : 's';
+  }
+  return Math.max(...tokens.map(t => t.u === 'min' ? t.n * 60 : t.n));
+}
+
+// Un ejercicio es "temporizable" si sus reps están en segundos (holds).
+function timedSpec(e) {
+  if (!/\d\s*(s|seg)\b/i.test(e.reps || '')) return null;
+  const work = parseSeconds(e.reps);
+  if (!work) return null;
+  return { work: Math.round(work), rest: Math.round(parseSeconds(e.rest) || 90) };
+}
+
+function startTimer(e) {
+  stopTimer();
+  ensureAudio();
+  const spec = timedSpec(e);
+  const phases = [{ label: 'Prepárate', kind: 'ready', dur: 10 }];
+  for (let s = 1; s <= e.sets; s++) {
+    phases.push({ label: `Serie ${s} de ${e.sets}`, kind: 'work', dur: spec.work });
+    if (s < e.sets) phases.push({ label: `Descanso · va la ${s + 1} de ${e.sets}`, kind: 'rest', dur: spec.rest });
+  }
+  T = {
+    name: e.name, spec, sets: e.sets, phases, idx: 0,
+    endsAt: Date.now() + phases[0].dur * 1000,
+    paused: false, lastTick: null,
+    interval: setInterval(tickTimer, 200),
+  };
+  requestWakeLock();
+  renderTimerOverlay();
+  beep(880, 0.15);
+}
+
+function tickTimer() {
+  if (!T || T.paused || T.done) return;
+  const remainMs = T.endsAt - Date.now();
+  const remain = Math.ceil(remainMs / 1000);
+  if (remain <= 3 && remain >= 1 && T.lastTick !== remain) {
+    T.lastTick = remain;
+    beep(880, 0.1);
+  }
+  if (remainMs <= 0) {
+    T.idx++;
+    if (T.idx >= T.phases.length) {
+      T.done = true;
+      beep(1320, 0.25); beep(1320, 0.25, 0.35); beep(1760, 0.7, 0.7);
+      clearInterval(T.interval);
+      releaseWakeLock();
+      updateTimerDom();
+      return;
+    }
+    const p = T.phases[T.idx];
+    T.endsAt = Date.now() + p.dur * 1000;
+    T.lastTick = null;
+    if (p.kind === 'work') beep(1320, 0.5);
+    else { beep(660, 0.25); beep(660, 0.25, 0.35); }
+  }
+  updateTimerDom();
+}
+
+function pauseTimer() {
+  if (!T || T.done) return;
+  if (T.paused) {
+    T.endsAt = Date.now() + T.remainMs;
+    T.paused = false;
+  } else {
+    T.remainMs = Math.max(0, T.endsAt - Date.now());
+    T.paused = true;
+  }
+  updateTimerDom();
+}
+
+function stopTimer() {
+  if (!T) return;
+  clearInterval(T.interval);
+  T = null;
+  releaseWakeLock();
+  document.getElementById('timer-overlay')?.remove();
+}
+
+function fmtClock(secs) {
+  const m = Math.floor(secs / 60);
+  return m ? `${m}:${String(secs % 60).padStart(2, '0')}` : String(secs);
+}
+
+function renderTimerOverlay() {
+  document.getElementById('timer-overlay')?.remove();
+  const el = document.createElement('div');
+  el.id = 'timer-overlay';
+  el.innerHTML = `
+    <div class="t-name"></div>
+    <div class="t-phase"></div>
+    <div class="t-time"></div>
+    <div class="t-spec">${T.sets} × ${T.spec.work}s · descanso ${fmtClock(T.spec.rest)}</div>
+    <div class="t-controls">
+      <button class="btn-secondary" id="t-pause">Pausa</button>
+      <button class="btn-secondary" id="t-stop">Cerrar</button>
+    </div>`;
+  document.body.appendChild(el);
+  document.getElementById('t-pause').addEventListener('click', pauseTimer);
+  document.getElementById('t-stop').addEventListener('click', stopTimer);
+  updateTimerDom();
+}
+
+function updateTimerDom() {
+  const el = document.getElementById('timer-overlay');
+  if (!el || !T) return;
+  const p = T.phases[Math.min(T.idx, T.phases.length - 1)];
+  el.className = T.done ? 'done' : p.kind;
+  el.querySelector('.t-name').textContent = T.name;
+  if (T.done) {
+    el.querySelector('.t-phase').textContent = '¡Terminado!';
+    el.querySelector('.t-time').textContent = '✓';
+    document.getElementById('t-pause').style.display = 'none';
+  } else {
+    const remainMs = T.paused ? T.remainMs : Math.max(0, T.endsAt - Date.now());
+    el.querySelector('.t-phase').textContent = T.paused ? `${p.label} · pausado` : p.label;
+    el.querySelector('.t-time').textContent = fmtClock(Math.ceil(remainMs / 1000));
+    document.getElementById('t-pause').textContent = T.paused ? 'Continuar' : 'Pausa';
+  }
+}
+
+async function requestWakeLock() {
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+}
+function releaseWakeLock() {
+  try { wakeLock?.release(); } catch {}
+  wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (T && !T.done && document.visibilityState === 'visible') requestWakeLock();
+});
+
 // ---------- Views ----------
 
 function renderHome() {
@@ -261,6 +427,7 @@ function renderWorkout(id) {
       <div class="ex-card">
         <div class="ex-head">
           <h4>${esc(e.name)}</h4>
+          ${timedSpec(e) ? `<button class="timer-btn" data-timer="${esc(e.id)}" aria-label="Iniciar timer">⏱</button>` : ''}
           <a class="video-btn" href="${esc(videoUrl)}" target="_blank" rel="noopener" aria-label="Ver técnica en YouTube">▶</a>
         </div>
         <div class="ex-meta">
@@ -319,6 +486,13 @@ function renderWorkout(id) {
       persist();
       renderWorkout(id);
       window.scrollTo(0, document.documentElement.scrollTop);
+    });
+  });
+
+  $app.querySelectorAll('[data-timer]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ex = w.exercises.find(x => x.id === btn.dataset.timer);
+      if (ex) startTimer(ex);
     });
   });
 
