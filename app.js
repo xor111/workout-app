@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 
 const $app = document.getElementById('app');
 
@@ -364,6 +364,56 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// ---------- Mini timer de descanso (ejercicios por reps) ----------
+
+let miniT = null; // { exId, endsAt, lastTick, interval }
+
+function startRest(e) {
+  ensureAudio();
+  const wasRunning = miniT?.exId === e.id;
+  stopRest();
+  if (wasRunning) return; // segundo tap = cancelar
+  const secs = Math.round(parseSeconds(e.rest) || 90);
+  miniT = { exId: e.id, endsAt: Date.now() + secs * 1000, lastTick: null, interval: setInterval(tickRest, 250) };
+  beep(660, 0.3);
+  updateRestDom();
+}
+
+function tickRest() {
+  if (!miniT) return;
+  const remain = Math.ceil((miniT.endsAt - Date.now()) / 1000);
+  if (remain <= 3 && remain >= 1 && miniT.lastTick !== remain) {
+    miniT.lastTick = remain;
+    beep(1100, 0.12);
+  }
+  if (remain <= 0) {
+    beep(1320, 0.5); beep(1320, 0.3, 0.6);
+    stopRest();
+    return;
+  }
+  updateRestDom();
+}
+
+function stopRest() {
+  if (!miniT) return;
+  clearInterval(miniT.interval);
+  miniT = null;
+  updateRestDom();
+}
+
+function updateRestDom() {
+  document.querySelectorAll('[data-rest]').forEach(btn => {
+    if (miniT && miniT.exId === btn.dataset.rest) {
+      const remain = Math.max(0, Math.ceil((miniT.endsAt - Date.now()) / 1000));
+      btn.textContent = `✕ ${fmtClock(remain)}`;
+      btn.classList.add('running');
+    } else {
+      btn.textContent = `⏱ ${fmtClock(Number(btn.dataset.secs))}`;
+      btn.classList.remove('running');
+    }
+  });
+}
+
 // ---------- Views ----------
 
 function renderHome() {
@@ -404,6 +454,7 @@ function renderHome() {
     </div>
     ${demo ? '<div class="banner">Modo demo con datos de ejemplo. Toca ⚙️ para conectar tu repo de GitHub.</div>' : ''}
     ${pending && !demo ? `<div class="banner warn">${pending} día(s) con notas sin subir. Se subirán al guardar con conexión.</div>` : ''}
+    ${index?.week_note ? `<div class="week-note"><div class="wn-title">📋 Nota del coach</div>${esc(index.week_note).replace(/\n/g, '<br>')}</div>` : ''}
     ${cards}
   `;
 
@@ -444,7 +495,8 @@ function renderWorkout(id) {
       lastSection = e.section;
     }
     const videoUrl = e.video
-      || `https://www.youtube.com/results?search_query=${encodeURIComponent(e.name.replace(/\(.*?\)/g, '').trim() + ' técnica tutorial')}`;
+      || `https://www.youtube.com/results?search_query=${encodeURIComponent(e.video_q || (e.name.replace(/\(.*?\)/g, '').trim() + ' técnica tutorial'))}`;
+    const restSecs = !timedSpec(e) && e.sets > 1 ? Math.round(parseSeconds(e.rest) || 0) : 0;
     return `
       ${sectionHtml}
       <div class="ex-card">
@@ -461,7 +513,10 @@ function renderWorkout(id) {
         </div>
         ${e.cue ? `<div class="cue">${esc(e.cue)}</div>` : ''}
         ${e.coach_note ? `<div class="coach-note">💬 ${esc(e.coach_note)}</div>` : ''}
-        <div class="set-row"><span class="lbl">Series</span>${dots}</div>
+        <div class="set-row">
+          <span class="lbl">Series</span>${dots}
+          ${restSecs ? `<button class="rest-btn" data-rest="${esc(e.id)}" data-secs="${restSecs}">⏱ ${fmtClock(restSecs)}</button>` : ''}
+        </div>
         <textarea class="note-input" rows="1" data-exnote="${esc(e.id)}"
           placeholder="Nota para Claude…">${esc(en.note)}</textarea>
       </div>`;
@@ -493,7 +548,10 @@ function renderWorkout(id) {
   `;
 
   const persist = () => {
-    note.updated_at = new Date().toISOString();
+    // inicio/fin de sesión automáticos: primera y última interacción del día
+    if (!note.started_at) note.started_at = new Date().toISOString();
+    note.ended_at = new Date().toISOString();
+    note.updated_at = note.ended_at;
     note.dirty = true;
     setNote(id, note);
     document.getElementById('sync-status').textContent = 'Cambios guardados en el teléfono, sin subir.';
@@ -518,6 +576,14 @@ function renderWorkout(id) {
       if (ex) startTimer(ex);
     });
   });
+
+  $app.querySelectorAll('[data-rest]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ex = w.exercises.find(x => x.id === btn.dataset.rest);
+      if (ex) startRest(ex);
+    });
+  });
+  updateRestDom(); // restaura el estado si hay un descanso corriendo tras re-render
 
   $app.querySelectorAll('[data-exnote]').forEach(ta => {
     autoGrow(ta);

@@ -100,6 +100,26 @@ body {
 .pill.done { background: var(--accent-dim); color: var(--accent); }
 .pill.pending { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
 
+.week-note {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 13px 15px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+.week-note .wn-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
 /* ---------- Workout list ---------- */
 .wo-card {
   display: block;
@@ -306,6 +326,7 @@ body {
 .set-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -328,6 +349,26 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: #10130a;
+}
+
+.rest-btn {
+  margin-left: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 99px;
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 9px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rest-btn.running {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .note-input {
