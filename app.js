@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 
 const $app = document.getElementById('app');
 
@@ -547,11 +547,20 @@ function renderWorkout(id) {
     <div class="sync-status" id="sync-status">${syncStatusText(note)}</div>
   `;
 
+  // Inicio/fin de sesión automáticos. Reglas anti-ruido: solo el workout de
+  // HOY registra tiempos, solo marcar series cuenta (las notas se escriben a
+  // cualquier hora), y una ráfaga >2h después de la última actividad no
+  // extiende el fin (series marcadas tarde por olvido).
+  const markActivity = () => {
+    if (w.date !== todayISO()) return;
+    const now = new Date().toISOString();
+    if (!note.started_at) note.started_at = now;
+    else if (note.ended_at && Date.now() - Date.parse(note.ended_at) > 2 * 3600 * 1000) return;
+    note.ended_at = now;
+  };
+
   const persist = () => {
-    // inicio/fin de sesión automáticos: primera y última interacción del día
-    if (!note.started_at) note.started_at = new Date().toISOString();
-    note.ended_at = new Date().toISOString();
-    note.updated_at = note.ended_at;
+    note.updated_at = new Date().toISOString();
     note.dirty = true;
     setNote(id, note);
     document.getElementById('sync-status').textContent = 'Cambios guardados en el teléfono, sin subir.';
@@ -564,6 +573,7 @@ function renderWorkout(id) {
       const n = Number(btn.dataset.set);
       const en = note.exercises[exId];
       en.sets_done = (en.sets_done === n) ? n - 1 : n;
+      markActivity();
       persist();
       renderWorkout(id);
       window.scrollTo(0, document.documentElement.scrollTop);
