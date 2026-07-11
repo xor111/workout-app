@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 
 const $app = document.getElementById('app');
 
@@ -183,7 +183,20 @@ let wakeLock = null;
 
 function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') audioCtx.resume();
+  // desbloquea la ruta de audio de iOS con un buffer silencioso de 1 muestra
+  try {
+    const b = audioCtx.createBufferSource();
+    b.buffer = audioCtx.createBuffer(1, 1, 22050);
+    b.connect(audioCtx.destination);
+    b.start(0);
+  } catch {}
+}
+
+function wakeAudio() {
+  // iOS suspende el AudioContext tras interrupciones (llamadas, cambio de
+  // AirPods, background); intenta revivirlo sin esperar un gesto.
+  if (audioCtx && audioCtx.state !== 'running') audioCtx.resume();
 }
 
 const VOL_LEVELS = { bajo: 0.2, medio: 0.55, alto: 1.0 };
@@ -251,6 +264,7 @@ const TICK_WINDOW = { ready: 10, rest: 10, work: 5 };
 
 function tickTimer() {
   if (!T || T.paused || T.done) return;
+  wakeAudio();
   const remainMs = T.endsAt - Date.now();
   const remain = Math.ceil(remainMs / 1000);
   const win = TICK_WINDOW[T.phases[T.idx].kind] ?? 3;
@@ -322,6 +336,7 @@ function renderTimerOverlay() {
     <div class="t-phase"></div>
     <div class="t-time"></div>
     <div class="t-spec">${T.sets} × ${T.spec.work}s · descanso ${fmtClock(T.spec.rest)}</div>
+    <div class="t-audio" id="t-audio"></div>
     <div class="t-controls">
       <button class="btn-secondary" id="t-pause">Pausa</button>
       <button class="btn-secondary" id="t-stop">Cerrar</button>
@@ -329,6 +344,7 @@ function renderTimerOverlay() {
   document.body.appendChild(el);
   document.getElementById('t-pause').addEventListener('click', pauseTimer);
   document.getElementById('t-stop').addEventListener('click', stopTimer);
+  el.addEventListener('click', ensureAudio); // cualquier tap revive el audio
   updateTimerDom();
 }
 
@@ -348,6 +364,12 @@ function updateTimerDom() {
     el.querySelector('.t-time').textContent = fmtClock(Math.ceil(remainMs / 1000));
     document.getElementById('t-pause').textContent = T.paused ? 'Continuar' : 'Pausa';
   }
+  const audioEl = document.getElementById('t-audio');
+  if (audioEl) {
+    audioEl.textContent = (audioCtx && audioCtx.state !== 'running' && !T.done)
+      ? '🔇 Audio dormido — toca la pantalla para reactivar los beeps'
+      : '';
+  }
 }
 
 async function requestWakeLock() {
@@ -358,9 +380,12 @@ function releaseWakeLock() {
   wakeLock = null;
 }
 document.addEventListener('visibilitychange', () => {
-  if (T && !T.done && document.visibilityState === 'visible') {
-    requestWakeLock();
-    tickTimer(); // ponte al día de inmediato tras volver de background
+  if (document.visibilityState === 'visible') {
+    wakeAudio();
+    if (T && !T.done) {
+      requestWakeLock();
+      tickTimer(); // ponte al día de inmediato tras volver de background
+    }
   }
 });
 
@@ -381,6 +406,7 @@ function startRest(e) {
 
 function tickRest() {
   if (!miniT) return;
+  wakeAudio();
   const remain = Math.ceil((miniT.endsAt - Date.now()) / 1000);
   if (remain <= 3 && remain >= 1 && miniT.lastTick !== remain) {
     miniT.lastTick = remain;
