@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.9';
+const APP_VERSION = '1.10';
 
 const $app = document.getElementById('app');
 
@@ -442,30 +442,79 @@ function updateRestDom() {
 
 // ---------- Views ----------
 
+// Estado de UI del home (sobrevive re-renders de la sesión)
+let showPast = false;
+let weekNoteOpen = null; // null = decidir según si la nota es nueva
+const wnKey = (s) => 'wn:' + s.length + ':' + s.slice(0, 40);
+
+function mondayOf(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function renderHome() {
   const { index, workouts, demo } = getData();
   const today = todayISO();
 
+  const cardHtml = (w) => {
+    const isToday = w.date === today;
+    const note = getNote(w.id) || (demo ? SAMPLE_DATA.notes[w.id] : null);
+    const dirty = getNote(w.id)?.dirty;
+    let pill = '';
+    if (isToday) pill = '<span class="pill today">HOY</span>';
+    else if (dirty) pill = '<span class="pill pending">POR SUBIR</span>';
+    else if (noteHasContent(note)) pill = '<span class="pill done">✓ CON NOTAS</span>';
+    return `
+      <a class="wo-card ${isToday ? 'today-card' : ''}" href="#/w/${esc(w.id)}">
+        <div class="row1"><span class="date">${esc(fmtDate(w.date))}</span>${pill}</div>
+        <h3>${esc(w.title)}</h3>
+        <div class="focus">${esc(w.focus || '')}</div>
+      </a>`;
+  };
+
   let cards = '';
+  let pastHtml = '';
   if (index?.workouts?.length) {
     const sorted = [...index.workouts].sort((a, b) => a.date.localeCompare(b.date));
-    cards = sorted.map(w => {
-      const isToday = w.date === today;
-      const note = getNote(w.id) || (demo ? SAMPLE_DATA.notes[w.id] : null);
-      const dirty = getNote(w.id)?.dirty;
-      let pill = '';
-      if (isToday) pill = '<span class="pill today">HOY</span>';
-      else if (dirty) pill = '<span class="pill pending">POR SUBIR</span>';
-      else if (noteHasContent(note)) pill = '<span class="pill done">✓ CON NOTAS</span>';
-      return `
-        <a class="wo-card ${isToday ? 'today-card' : ''}" href="#/w/${esc(w.id)}">
-          <div class="row1"><span class="date">${esc(fmtDate(w.date))}</span>${pill}</div>
-          <h3>${esc(w.title)}</h3>
-          <div class="focus">${esc(w.focus || '')}</div>
-        </a>`;
-    }).join('');
+    // Semana vigente = la del día de hoy, o la más nueva publicada si ya
+    // llegó la siguiente (domingo en la noche la nueva desplaza a la vieja).
+    const latestMonday = mondayOf(sorted[sorted.length - 1].date);
+    const curMonday = latestMonday > mondayOf(today) ? latestMonday : mondayOf(today);
+    const current = sorted.filter(w => mondayOf(w.date) >= curMonday);
+    const past = sorted.filter(w => mondayOf(w.date) < curMonday).reverse(); // recientes primero
+
+    cards = current.map(cardHtml).join('')
+      || `<div class="empty">No hay workouts esta semana todavía.</div>`;
+
+    if (past.length) {
+      pastHtml = `<button class="past-toggle" id="past-toggle">${showPast ? '▾' : '▸'}&nbsp; Semanas anteriores (${past.length})</button>`;
+      if (showPast) {
+        let lastWeek = null;
+        pastHtml += past.map(w => {
+          const wk = mondayOf(w.date);
+          const label = wk !== lastWeek
+            ? `<div class="section-label">Semana del ${esc(new Date(wk + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long' }))}</div>`
+            : '';
+          lastWeek = wk;
+          return label + cardHtml(w);
+        }).join('');
+      }
+    }
   } else {
     cards = `<div class="empty">No hay workouts todavía.<br>${isConfigured() ? 'Desliza tu dedo hacia abajo o revisa la configuración ⚙️' : 'Configura GitHub en ⚙️ para ver los tuyos.'}</div>`;
+  }
+
+  // Nota del coach: colapsada en un botón; se abre sola solo si es nueva.
+  let wnHtml = '';
+  if (index?.week_note) {
+    if (weekNoteOpen === null) weekNoteOpen = store.get('wk.wn.read') !== wnKey(index.week_note);
+    wnHtml = weekNoteOpen
+      ? `<div class="week-note">
+           <button class="wn-head" id="wn-toggle"><span class="wn-title">📋 Nota del coach</span><span class="wn-chevron">▾</span></button>
+           <div class="wn-body">${esc(index.week_note).replace(/\n/g, '<br>')}</div>
+         </div>`
+      : `<button class="week-note-collapsed" id="wn-toggle"><span class="wn-title">📋 Nota del coach</span><span class="wn-hint">leer ▸</span></button>`;
   }
 
   const pending = pendingNoteIds().length;
@@ -480,9 +529,20 @@ function renderHome() {
     </div>
     ${demo ? '<div class="banner">Modo demo con datos de ejemplo. Toca ⚙️ para conectar tu repo de GitHub.</div>' : ''}
     ${pending && !demo ? `<div class="banner warn">${pending} día(s) con notas sin subir. Se subirán al guardar con conexión.</div>` : ''}
-    ${index?.week_note ? `<div class="week-note"><div class="wn-title">📋 Nota del coach</div>${esc(index.week_note).replace(/\n/g, '<br>')}</div>` : ''}
+    ${wnHtml}
     ${cards}
+    ${pastHtml}
   `;
+
+  document.getElementById('wn-toggle')?.addEventListener('click', () => {
+    weekNoteOpen = !weekNoteOpen;
+    if (!weekNoteOpen) store.set('wk.wn.read', wnKey(index.week_note));
+    renderHome();
+  });
+  document.getElementById('past-toggle')?.addEventListener('click', () => {
+    showPast = !showPast;
+    renderHome();
+  });
 
   if (isConfigured()) {
     refreshData().then(ok => { if (ok && location.hash.replace('#/', '') === '') renderHome(); });

@@ -111,14 +111,59 @@ body {
   margin-bottom: 16px;
   color: var(--text);
 }
-.week-note .wn-title {
+.wn-title {
   font-size: 12.5px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--accent);
-  margin-bottom: 6px;
 }
+.wn-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.wn-chevron { color: var(--muted); font-size: 14px; }
+.week-note-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 12px 15px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.wn-hint { color: var(--muted); font-size: 13px; font-weight: 600; }
+
+.past-toggle {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  border-radius: 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 13px;
+  margin-top: 6px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.past-toggle:active { background: var(--surface); }
 
 /* ---------- Workout list ---------- */
 .wo-card {
