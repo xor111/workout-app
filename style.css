@@ -440,6 +440,37 @@ body {
 
 textarea.day-note { min-height: 90px; }
 
+/* ---------- Cronómetro de sesión ---------- */
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.session-btn {
+  background: var(--accent);
+  color: #10130a;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-size: 15px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+}
+.session-btn.stop {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.session-live {
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.session-done { color: var(--muted); font-weight: 600; font-size: 14.5px; }
+
 /* ---------- Save bar ---------- */
 .save-bar {
   position: sticky;

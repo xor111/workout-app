@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.10';
+const APP_VERSION = '1.11';
 
 const $app = document.getElementById('app');
 
@@ -284,7 +284,7 @@ function tickTimer() {
         T.done = true;
         beep(1320, 0.25); beep(1320, 0.25, 0.35); beep(1760, 0.7, 0.7);
         clearInterval(T.interval);
-        releaseWakeLock();
+        updateWakeLock();
         updateTimerDom();
         return;
       }
@@ -318,7 +318,7 @@ function stopTimer() {
   if (!T) return;
   clearInterval(T.interval);
   T = null;
-  releaseWakeLock();
+  updateWakeLock();
   document.getElementById('timer-overlay')?.remove();
 }
 
@@ -379,13 +379,17 @@ function releaseWakeLock() {
   try { wakeLock?.release(); } catch {}
   wakeLock = null;
 }
+// Pantalla despierta siempre que estés dentro de un workout (no solo con
+// timer corriendo) — en el gym la app queda abierta entre series.
+function updateWakeLock() {
+  if (location.hash.startsWith('#/w/') || (T && !T.done)) requestWakeLock();
+  else releaseWakeLock();
+}
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     wakeAudio();
-    if (T && !T.done) {
-      requestWakeLock();
-      tickTimer(); // ponte al día de inmediato tras volver de background
-    }
+    updateWakeLock();
+    if (T && !T.done) tickTimer(); // ponte al día de inmediato tras volver de background
   }
 });
 
@@ -618,6 +622,7 @@ function renderWorkout(id) {
       <div class="date">${esc(fmtDate(w.date))}</div>
       <h2>${esc(w.title)}</h2>
       <div class="focus">${esc(w.focus || '')}</div>
+      ${w.date === todayISO() ? '<div class="session-row" id="session-row"></div>' : ''}
     </div>
     ${listSection('Calentamiento', w.warmup)}
     ${hasSections ? '' : '<div class="section-label">Ejercicios</div>'}
@@ -641,9 +646,41 @@ function renderWorkout(id) {
     if (w.date !== todayISO()) return;
     const now = new Date().toISOString();
     if (!note.started_at) note.started_at = now;
+    else if (note.time_manual_end) return; // cerró con el botón: respetar
     else if (note.ended_at && Date.now() - Date.parse(note.ended_at) > 2 * 3600 * 1000) return;
     note.ended_at = now;
   };
+
+  // Cronómetro de sesión: botón manual con la captura automática de respaldo
+  const renderSessionRow = () => {
+    const row = document.getElementById('session-row');
+    if (!row) return;
+    if (!note.started_at) {
+      row.innerHTML = `<button class="session-btn" id="session-start">▶ Iniciar entrenamiento</button>`;
+      document.getElementById('session-start').addEventListener('click', () => {
+        note.started_at = new Date().toISOString();
+        note.time_manual = true;
+        persist();
+        renderSessionRow();
+      });
+    } else if (note.time_manual_end && note.ended_at) {
+      const mins = Math.max(1, Math.round((Date.parse(note.ended_at) - Date.parse(note.started_at)) / 60000));
+      row.innerHTML = `<span class="session-done">✓ Entrenaste ${fmtDur(mins)} (${hhmm(note.started_at)}–${hhmm(note.ended_at)})</span>`;
+    } else {
+      const mins = Math.max(0, Math.floor((Date.now() - Date.parse(note.started_at)) / 60000));
+      row.innerHTML = `<span class="session-live">⏱ ${fmtDur(mins)} en curso</span>
+        <button class="session-btn stop" id="session-end">■ Terminar</button>`;
+      document.getElementById('session-end').addEventListener('click', () => {
+        note.ended_at = new Date().toISOString();
+        note.time_manual_end = true;
+        persist();
+        renderSessionRow();
+      });
+    }
+  };
+  clearInterval(sessionInterval);
+  sessionInterval = setInterval(renderSessionRow, 30000);
+  renderSessionRow();
 
   const persist = () => {
     note.updated_at = new Date().toISOString();
@@ -716,6 +753,17 @@ function renderWorkout(id) {
       status.className = 'sync-status warn';
     }
   });
+}
+
+// ---------- Cronómetro de sesión (manual) ----------
+
+let sessionInterval = null;
+
+const hhmm = (iso) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+function fmtDur(mins) {
+  const h = Math.floor(mins / 60);
+  return h ? `${h}h ${String(mins % 60).padStart(2, '0')}m` : `${mins} min`;
 }
 
 function syncStatusText(note) {
@@ -819,6 +867,8 @@ function renderSettings() {
 function route() {
   const hash = location.hash.replace(/^#\/?/, '');
   window.scrollTo(0, 0);
+  clearInterval(sessionInterval);
+  updateWakeLock();
   if (hash === 'settings') return renderSettings();
   if (hash.startsWith('w/')) return renderWorkout(decodeURIComponent(hash.slice(2)));
   renderHome();
