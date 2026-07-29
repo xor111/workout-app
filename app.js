@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.11';
+const APP_VERSION = '1.12';
 
 const $app = document.getElementById('app');
 
@@ -17,7 +17,7 @@ const store = {
 const getSettings = () => store.get('wk.settings', { owner: '', repo: '', token: '' });
 const isConfigured = () => !!getSettings().token;
 
-const getCache = () => store.get('wk.cache', { index: null, workouts: {}, remoteNotes: {} });
+const getCache = () => store.get('wk.cache', { index: null, workouts: {}, remoteNotes: {}, shas: {} });
 const setCache = (c) => store.set('wk.cache', c);
 
 const getNote = (id) => store.get('wk.note.' + id, null);
@@ -57,6 +57,22 @@ async function ghGetFile(path) {
   return { json: JSON.parse(text), sha: data.sha };
 }
 
+// Lista un directorio devolviendo { 'ruta/archivo.json': sha }. Permite
+// descargar solo lo que cambió en vez de todo el repo en cada refresh.
+async function ghListDir(path) {
+  const { owner, repo } = getSettings();
+  const res = await fetch(`${GH}/repos/${owner}/${repo}/contents/${path}?t=${Date.now()}`, {
+    headers: ghHeaders(),
+    cache: 'no-store',
+  });
+  if (res.status === 404) return {};
+  if (!res.ok) throw new Error(`GitHub ${res.status} al listar ${path}`);
+  const arr = await res.json();
+  return Object.fromEntries(
+    arr.filter(f => f.type === 'file' && f.name.endsWith('.json')).map(f => [f.path, f.sha])
+  );
+}
+
 async function ghPutFile(path, obj, message) {
   const { owner, repo } = getSettings();
   const existing = await ghGetFile(path);
@@ -77,22 +93,56 @@ async function ghPutFile(path, obj, message) {
 // ---------- Data loading ----------
 
 let refreshing = false;
+let lastRefresh = 0;
+const REFRESH_MIN_MS = 60000; // no más de un refresh por minuto
 
-async function refreshData() {
+// Devuelve true SOLO si algo cambió en el remoto (así renderHome no entra en
+// bucle re-renderizándose a sí mismo). Descarga incremental por SHA: en estado
+// estable son 3 peticiones, no una por cada workout y nota.
+async function refreshData(force = false) {
   if (!isConfigured() || refreshing) return false;
+  if (!force && Date.now() - lastRefresh < REFRESH_MIN_MS) return false;
   refreshing = true;
+  lastRefresh = Date.now();
   try {
-    const idx = await ghGetFile('index.json');
+    const prev = getCache();
+    const [idx, woList, noteList] = await Promise.all([
+      ghGetFile('index.json'),
+      ghListDir('workouts'),
+      ghListDir('notes'),
+    ]);
     if (!idx) throw new Error('No existe index.json en el repo');
-    const cache = { index: idx.json, workouts: {}, remoteNotes: {} };
-    await Promise.all(idx.json.workouts.map(async (w) => {
-      const [wo, note] = await Promise.all([
-        ghGetFile(`workouts/${w.id}.json`),
-        ghGetFile(`notes/${w.id}.json`),
-      ]);
-      if (wo) cache.workouts[w.id] = wo.json;
-      if (note) cache.remoteNotes[w.id] = note.json;
+
+    const cache = {
+      index: idx.json,
+      workouts: { ...prev.workouts },
+      remoteNotes: { ...prev.remoteNotes },
+      shas: { ...(prev.shas || {}) },
+    };
+    let changed = JSON.stringify(prev.index) !== JSON.stringify(idx.json);
+    const idOf = (path) => path.slice(path.indexOf('/') + 1).replace(/\.json$/, '');
+
+    // Baja solo los archivos nuevos o cuyo SHA cambió
+    const stale = Object.entries({ ...woList, ...noteList })
+      .filter(([path, sha]) => cache.shas[path] !== sha);
+    await Promise.all(stale.map(async ([path, sha]) => {
+      const file = await ghGetFile(path);
+      if (!file) return;
+      if (path.startsWith('workouts/')) cache.workouts[idOf(path)] = file.json;
+      else cache.remoteNotes[idOf(path)] = file.json;
+      cache.shas[path] = sha;
+      changed = true;
     }));
+
+    // Purga lo que ya no existe en el remoto
+    for (const path of Object.keys(cache.shas)) {
+      if (path in woList || path in noteList) continue;
+      if (path.startsWith('workouts/')) delete cache.workouts[idOf(path)];
+      else delete cache.remoteNotes[idOf(path)];
+      delete cache.shas[path];
+      changed = true;
+    }
+
     setCache(cache);
     // Adopta notas remotas si no hay cambios locales sin subir;
     // si la nota remota ya no existe, descarta la copia local limpia.
@@ -105,7 +155,7 @@ async function refreshData() {
         localStorage.removeItem('wk.note.' + w.id);
       }
     }
-    return true;
+    return changed;
   } catch (e) {
     console.warn('refreshData:', e.message);
     return false;
@@ -549,7 +599,9 @@ function renderHome() {
   });
 
   if (isConfigured()) {
-    refreshData().then(ok => { if (ok && location.hash.replace('#/', '') === '') renderHome(); });
+    refreshData().then(changed => {
+      if (changed && location.hash.replace('#/', '') === '') renderHome();
+    });
   }
 }
 
@@ -853,7 +905,7 @@ function renderSettings() {
       if (!idx) throw new Error('Conecté al repo pero no encontré index.json.');
       msg.textContent = `✓ Conectado. Encontré ${idx.json.workouts.length} workout(s).`;
       msg.className = 'settings-msg ok';
-      await refreshData();
+      await refreshData(true);
       setTimeout(() => { location.hash = ''; }, 900);
     } catch (e) {
       msg.textContent = '✗ ' + e.message;
