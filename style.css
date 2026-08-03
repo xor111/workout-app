@@ -280,6 +280,10 @@ body {
 }
 .timer-btn:active { background: var(--accent); color: #10130a; }
 
+/* Iconos SVG inline */
+.ico { display: inline-block; vertical-align: -0.16em; flex-shrink: 0; }
+.coach-note .ico, .wn-title .ico { vertical-align: -0.22em; }
+
 /* ---------- Timer overlay ---------- */
 #timer-overlay {
   position: fixed;
@@ -333,14 +337,35 @@ body {
   color: #fbbf24;
   margin-bottom: 10px;
 }
+/* Mapa del ciclo completo: un segmento por fase, ancho proporcional a su
+   duración y color según el tipo (prepárate / trabajo / descanso). */
+#timer-overlay .t-map {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  max-width: 340px;
+  height: 10px;
+  margin-top: 6px;
+}
+#timer-overlay .t-seg {
+  border-radius: 99px;
+  opacity: 0.22;
+  transition: opacity 0.25s ease;
+}
+#timer-overlay .t-seg.ready { background: #fbbf24; }
+#timer-overlay .t-seg.work  { background: var(--accent); }
+#timer-overlay .t-seg.rest  { background: #7dd3fc; }
+#timer-overlay .t-seg.past  { opacity: 0.6; }
+#timer-overlay .t-seg.now   { opacity: 1; }
+
 #timer-overlay .t-progress {
   width: 100%;
   max-width: 340px;
-  height: 6px;
+  height: 4px;
   border-radius: 99px;
   background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 #timer-overlay .t-bar {
   height: 100%;

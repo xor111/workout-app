@@ -1,8 +1,27 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.13';
+const APP_VERSION = '1.14';
 
 const $app = document.getElementById('app');
+
+// ---------- Iconos (SVG inline; nada de emojis en la interfaz) ----------
+
+const ICON = {
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.9 1.9M7.2 16.8l-1.9 1.9M18.7 18.7l-1.9-1.9M7.2 7.2 5.3 5.3"/>',
+  clock: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 10v3.5l2.4 1.8M9.5 2.5h5"/>',
+  play: '<polygon points="7.5 4.5 19.5 12 7.5 19.5" fill="currentColor" stroke="none"/>',
+  prev: '<polygon points="18.5 19 9.5 12 18.5 5" fill="currentColor" stroke="none"/><rect x="4.5" y="5" width="2.6" height="14" rx="1.3" fill="currentColor" stroke="none"/>',
+  next: '<polygon points="5.5 5 14.5 12 5.5 19" fill="currentColor" stroke="none"/><rect x="16.9" y="5" width="2.6" height="14" rx="1.3" fill="currentColor" stroke="none"/>',
+  note: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8.5" y="2" width="7" height="4" rx="1.2"/><path d="M8.5 12h7M8.5 16h4.5"/>',
+  message: '<path d="M21 14.5a2 2 0 0 1-2 2H8l-4 3.5V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>',
+  mute: '<polygon points="11 5 6 9 2.5 9 2.5 15 6 15 11 19" fill="currentColor" stroke="none"/><path d="M22 9.5l-5.5 5M16.5 9.5l5.5 5"/>',
+  check: '<polyline points="20 6.5 9.5 17 4 11.5"/>',
+  stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.2" fill="currentColor" stroke="none"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+};
+
+const icon = (name, size = 18) =>
+  `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 
 // ---------- Storage ----------
 
@@ -365,7 +384,7 @@ function pauseTimer() {
 }
 
 // Navegación manual entre fases. delta -1 = anterior, +1 = siguiente.
-// Si llevas más de 3s dentro de una fase, ⏮ la reinicia en vez de retroceder
+// Si llevas más de 3s dentro de una fase, "anterior" la reinicia en vez de retroceder
 // (mismo comportamiento que un reproductor de música).
 function goPhase(delta) {
   if (!T) return;
@@ -421,13 +440,14 @@ function renderTimerOverlay() {
     <div class="t-phase"></div>
     <div class="t-time"></div>
     <div class="t-spec">${T.sets} × ${T.spec.work}s · descanso ${fmtClock(T.spec.rest)}</div>
+    <div class="t-map">${T.phases.map(p => `<span class="t-seg ${p.kind}" style="flex:${p.dur}"></span>`).join('')}</div>
     <div class="t-progress"><div class="t-bar" id="t-bar"></div></div>
     <div class="t-steps" id="t-steps"></div>
     <div class="t-audio" id="t-audio"></div>
     <div class="t-controls">
-      <button class="btn-secondary t-nav" id="t-prev" aria-label="Fase anterior">⏮</button>
+      <button class="btn-secondary t-nav" id="t-prev" aria-label="Fase anterior">${icon('prev', 20)}</button>
       <button class="btn-secondary" id="t-pause">Pausa</button>
-      <button class="btn-secondary t-nav" id="t-next" aria-label="Fase siguiente">⏭</button>
+      <button class="btn-secondary t-nav" id="t-next" aria-label="Fase siguiente">${icon('next', 20)}</button>
     </div>
     <button class="t-close" id="t-stop">Cerrar</button>`;
   document.body.appendChild(el);
@@ -465,10 +485,16 @@ function updateTimerDom() {
     ? `${T.phases.length} de ${T.phases.length} · ${fmtClock(total)} en total`
     : `Fase ${T.idx + 1} de ${T.phases.length} · faltan ${fmtClock(Math.ceil(total - done))} en total`;
   document.getElementById('t-prev').disabled = T.idx === 0 && !T.done;
+
+  // Mapa de fases: pasadas atenuadas, actual resaltada, futuras tenues
+  el.querySelectorAll('.t-seg').forEach((seg, i) => {
+    seg.classList.toggle('past', T.done || i < T.idx);
+    seg.classList.toggle('now', !T.done && i === T.idx);
+  });
   const audioEl = document.getElementById('t-audio');
   if (audioEl) {
-    audioEl.textContent = (audioCtx && audioCtx.state !== 'running' && !T.done)
-      ? '🔇 Audio dormido — toca la pantalla para reactivar los beeps'
+    audioEl.innerHTML = (audioCtx && audioCtx.state !== 'running' && !T.done)
+      ? icon('mute', 14) + ' Audio dormido — toca la pantalla para reactivar los beeps'
       : '';
   }
 }
@@ -536,10 +562,10 @@ function updateRestDom() {
   document.querySelectorAll('[data-rest]').forEach(btn => {
     if (miniT && miniT.exId === btn.dataset.rest) {
       const remain = Math.max(0, Math.ceil((miniT.endsAt - Date.now()) / 1000));
-      btn.textContent = `✕ ${fmtClock(remain)}`;
+      btn.innerHTML = icon('stop', 13) + ' ' + fmtClock(remain);
       btn.classList.add('running');
     } else {
-      btn.textContent = `⏱ ${fmtClock(Number(btn.dataset.secs))}`;
+      btn.innerHTML = icon('clock', 14) + ' ' + fmtClock(Number(btn.dataset.secs));
       btn.classList.remove('running');
     }
   });
@@ -569,7 +595,7 @@ function renderHome() {
     let pill = '';
     if (isToday) pill = '<span class="pill today">HOY</span>';
     else if (dirty) pill = '<span class="pill pending">POR SUBIR</span>';
-    else if (noteHasContent(note)) pill = '<span class="pill done">✓ CON NOTAS</span>';
+    else if (noteHasContent(note)) pill = `<span class="pill done">${icon('check', 12)} CON NOTAS</span>`;
     return `
       <a class="wo-card ${isToday ? 'today-card' : ''}" href="#/w/${esc(w.id)}">
         <div class="row1"><span class="date">${esc(fmtDate(w.date))}</span>${pill}</div>
@@ -607,7 +633,7 @@ function renderHome() {
       }
     }
   } else {
-    cards = `<div class="empty">No hay workouts todavía.<br>${isConfigured() ? 'Desliza tu dedo hacia abajo o revisa la configuración ⚙️' : 'Configura GitHub en ⚙️ para ver los tuyos.'}</div>`;
+    cards = `<div class="empty">No hay workouts todavía.<br>${isConfigured() ? 'Desliza tu dedo hacia abajo o revisa la configuración' : 'Configura GitHub en ajustes para ver los tuyos.'}</div>`;
   }
 
   // Nota del coach: colapsada en un botón; se abre sola solo si es nueva.
@@ -616,10 +642,10 @@ function renderHome() {
     if (weekNoteOpen === null) weekNoteOpen = store.get('wk.wn.read') !== wnKey(index.week_note);
     wnHtml = weekNoteOpen
       ? `<div class="week-note">
-           <button class="wn-head" id="wn-toggle"><span class="wn-title">📋 Nota del coach</span><span class="wn-chevron">▾</span></button>
+           <button class="wn-head" id="wn-toggle"><span class="wn-title">${icon('note', 14)} Nota del coach</span><span class="wn-chevron">▾</span></button>
            <div class="wn-body">${esc(index.week_note).replace(/\n/g, '<br>')}</div>
          </div>`
-      : `<button class="week-note-collapsed" id="wn-toggle"><span class="wn-title">📋 Nota del coach</span><span class="wn-hint">leer ▸</span></button>`;
+      : `<button class="week-note-collapsed" id="wn-toggle"><span class="wn-title">${icon('note', 14)} Nota del coach</span><span class="wn-hint">leer ▸</span></button>`;
   }
 
   const pending = pendingNoteIds().length;
@@ -630,9 +656,9 @@ function renderHome() {
         <h1>Workouts</h1>
         <div class="sub">${esc(fmtDate(today))}</div>
       </div>
-      <button class="icon-btn" onclick="location.hash='#/settings'" aria-label="Configuración">⚙️</button>
+      <button class="icon-btn" onclick="location.hash='#/settings'" aria-label="Configuración">${icon('gear', 20)}</button>
     </div>
-    ${demo ? '<div class="banner">Modo demo con datos de ejemplo. Toca ⚙️ para conectar tu repo de GitHub.</div>' : ''}
+    ${demo ? '<div class="banner">Modo demo con datos de ejemplo. Toca el engrane para conectar tu repo de GitHub.</div>' : ''}
     ${pending && !demo ? `<div class="banner warn">${pending} día(s) con notas sin subir. Se subirán al guardar con conexión.</div>` : ''}
     ${wnHtml}
     ${cards}
@@ -695,20 +721,20 @@ function renderWorkout(id) {
       <div class="ex-card">
         <div class="ex-head">
           <h4>${esc(e.name)}</h4>
-          ${timedSpec(e) ? `<button class="timer-btn" data-timer="${esc(e.id)}" aria-label="Iniciar timer">⏱</button>` : ''}
-          <a class="video-btn" href="${esc(videoUrl)}" target="_blank" rel="noopener" aria-label="Ver técnica en YouTube">▶</a>
+          ${timedSpec(e) ? `<button class="timer-btn" data-timer="${esc(e.id)}" aria-label="Iniciar timer">${icon('clock', 17)}</button>` : ''}
+          <a class="video-btn" href="${esc(videoUrl)}" target="_blank" rel="noopener" aria-label="Ver técnica en YouTube">${icon('play', 13)}</a>
         </div>
         <div class="ex-meta">
           <span>${e.sets} × ${esc(e.reps)}</span>
           ${e.weight ? `<span class="weight">${esc(e.weight)}</span>` : ''}
           ${e.rir ? `<span>RIR ${esc(e.rir)}</span>` : ''}
-          ${e.rest && !restSecs ? `<span>⏱ ${esc(e.rest)}</span>` : ''}
+          ${e.rest && !restSecs ? `<span>${icon('clock', 13)} ${esc(e.rest)}</span>` : ''}
         </div>
         ${e.cue ? `<div class="cue">${esc(e.cue)}</div>` : ''}
-        ${e.coach_note ? `<div class="coach-note">💬 ${esc(e.coach_note)}</div>` : ''}
+        ${e.coach_note ? `<div class="coach-note">${icon('message', 15)} ${esc(e.coach_note)}</div>` : ''}
         <div class="set-row">
           <span class="lbl">Series</span>${dots}
-          ${restSecs ? `<button class="rest-btn" data-rest="${esc(e.id)}" data-secs="${restSecs}">⏱ ${fmtClock(restSecs)}</button>` : ''}
+          ${restSecs ? `<button class="rest-btn" data-rest="${esc(e.id)}" data-secs="${restSecs}">${icon('clock', 14)} ${fmtClock(restSecs)}</button>` : ''}
         </div>
         <textarea class="note-input" rows="1" data-exnote="${esc(e.id)}"
           placeholder="Nota para Claude…">${esc(en.note)}</textarea>
@@ -759,7 +785,7 @@ function renderWorkout(id) {
     const row = document.getElementById('session-row');
     if (!row) return;
     if (!note.started_at) {
-      row.innerHTML = `<button class="session-btn" id="session-start">▶ Iniciar entrenamiento</button>`;
+      row.innerHTML = `<button class="session-btn" id="session-start">${icon('play', 15)} Iniciar entrenamiento</button>`;
       document.getElementById('session-start').addEventListener('click', () => {
         note.started_at = new Date().toISOString();
         note.time_manual = true;
@@ -768,11 +794,11 @@ function renderWorkout(id) {
       });
     } else if (note.time_manual_end && note.ended_at) {
       const mins = Math.max(1, Math.round((Date.parse(note.ended_at) - Date.parse(note.started_at)) / 60000));
-      row.innerHTML = `<span class="session-done">✓ Entrenaste ${fmtDur(mins)} (${hhmm(note.started_at)}–${hhmm(note.ended_at)})</span>`;
+      row.innerHTML = `<span class="session-done">${icon('check', 14)} Entrenaste ${fmtDur(mins)} (${hhmm(note.started_at)}–${hhmm(note.ended_at)})</span>`;
     } else {
       const mins = Math.max(0, Math.floor((Date.now() - Date.parse(note.started_at)) / 60000));
-      row.innerHTML = `<span class="session-live">⏱ ${fmtDur(mins)} en curso</span>
-        <button class="session-btn stop" id="session-end">■ Terminar</button>`;
+      row.innerHTML = `<span class="session-live">${icon('clock', 16)} ${fmtDur(mins)} en curso</span>
+        <button class="session-btn stop" id="session-end">${icon('stop', 13)} Terminar</button>`;
       document.getElementById('session-end').addEventListener('click', () => {
         note.ended_at = new Date().toISOString();
         note.time_manual_end = true;
@@ -849,7 +875,7 @@ function renderWorkout(id) {
     btn.textContent = 'Guardar notas';
     if (result.ok) {
       note = getNote(id);
-      status.textContent = '✓ Notas subidas. Claude las verá en su siguiente sesión.';
+      status.innerHTML = icon('check', 14) + ' Notas subidas. Claude las verá en su siguiente sesión.';
       status.className = 'sync-status ok';
     } else {
       status.textContent = 'Sin conexión o error al subir. Quedaron guardadas en el teléfono.';
@@ -871,7 +897,7 @@ function fmtDur(mins) {
 
 function syncStatusText(note) {
   if (note.dirty) return 'Tienes cambios sin subir.';
-  if (note.updated_at) return '✓ Notas sincronizadas.';
+  if (note.updated_at) return 'Notas sincronizadas.';
   return '';
 }
 
@@ -954,7 +980,7 @@ function renderSettings() {
     try {
       const idx = await ghGetFile('index.json');
       if (!idx) throw new Error('Conecté al repo pero no encontré index.json.');
-      msg.textContent = `✓ Conectado. Encontré ${idx.json.workouts.length} workout(s).`;
+      msg.innerHTML = icon('check', 14) + ` Conectado. Encontré ${idx.json.workouts.length} workout(s).`;
       msg.className = 'settings-msg ok';
       await refreshData(true);
       setTimeout(() => { location.hash = ''; }, 900);
