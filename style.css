@@ -333,6 +333,32 @@ body {
   color: #fbbf24;
   margin-bottom: 10px;
 }
+#timer-overlay .t-progress {
+  width: 100%;
+  max-width: 340px;
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  margin-top: 4px;
+}
+#timer-overlay .t-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: currentColor;
+  transition: width 0.25s linear;
+}
+#timer-overlay.ready .t-bar { color: #fbbf24; }
+#timer-overlay.work .t-bar  { color: var(--accent); }
+#timer-overlay.rest .t-bar  { color: #7dd3fc; }
+#timer-overlay.done .t-bar  { color: var(--accent); }
+#timer-overlay .t-steps {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 #timer-overlay .t-controls {
   display: flex;
   gap: 10px;
@@ -340,6 +366,23 @@ body {
   max-width: 340px;
 }
 #timer-overlay .t-controls .btn-secondary { background: rgba(255, 255, 255, 0.06); }
+#timer-overlay .t-nav {
+  flex: 0 0 74px;
+  font-size: 19px;
+  padding: 14px 0;
+}
+#timer-overlay .t-nav:disabled { opacity: 0.3; }
+#timer-overlay .t-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 14px 24px;
+  margin-top: 2px;
+  cursor: pointer;
+}
 .ex-meta {
   display: flex;
   flex-wrap: wrap;

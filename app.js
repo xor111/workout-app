@@ -1,6 +1,6 @@
 /* Workouts PWA — viewer de workouts + notas, sincronizado con GitHub. */
 
-const APP_VERSION = '1.12';
+const APP_VERSION = '1.13';
 
 const $app = document.getElementById('app');
 
@@ -364,6 +364,41 @@ function pauseTimer() {
   updateTimerDom();
 }
 
+// Navegación manual entre fases. delta -1 = anterior, +1 = siguiente.
+// Si llevas más de 3s dentro de una fase, ⏮ la reinicia en vez de retroceder
+// (mismo comportamiento que un reproductor de música).
+function goPhase(delta) {
+  if (!T) return;
+  ensureAudio();
+  const p = T.phases[Math.min(T.idx, T.phases.length - 1)];
+  const spent = T.done ? p.dur : p.dur - (T.paused ? T.remainMs : Math.max(0, T.endsAt - Date.now())) / 1000;
+  let next = T.idx + delta;
+  if (delta < 0 && !T.done && spent > 3) next = T.idx; // reinicia la fase actual
+  if (next < 0) next = 0;
+  if (next >= T.phases.length) { stopTimer(); return; }
+
+  T.idx = next;
+  T.done = false;
+  T.lastTick = null;
+  const durMs = T.phases[next].dur * 1000;
+  if (T.paused) T.remainMs = durMs;
+  else T.endsAt = Date.now() + durMs;
+  if (!T.interval) T.interval = setInterval(tickTimer, 200); // reanuda si había terminado
+  updateWakeLock();
+  updateTimerDom();
+}
+
+const totalDuration = () => T.phases.reduce((s, p) => s + p.dur, 0);
+
+function elapsedTotal() {
+  if (T.done) return totalDuration();
+  let e = 0;
+  for (let i = 0; i < T.idx; i++) e += T.phases[i].dur;
+  const p = T.phases[T.idx];
+  const remain = (T.paused ? T.remainMs : Math.max(0, T.endsAt - Date.now())) / 1000;
+  return e + (p.dur - remain);
+}
+
 function stopTimer() {
   if (!T) return;
   clearInterval(T.interval);
@@ -386,13 +421,19 @@ function renderTimerOverlay() {
     <div class="t-phase"></div>
     <div class="t-time"></div>
     <div class="t-spec">${T.sets} × ${T.spec.work}s · descanso ${fmtClock(T.spec.rest)}</div>
+    <div class="t-progress"><div class="t-bar" id="t-bar"></div></div>
+    <div class="t-steps" id="t-steps"></div>
     <div class="t-audio" id="t-audio"></div>
     <div class="t-controls">
+      <button class="btn-secondary t-nav" id="t-prev" aria-label="Fase anterior">⏮</button>
       <button class="btn-secondary" id="t-pause">Pausa</button>
-      <button class="btn-secondary" id="t-stop">Cerrar</button>
-    </div>`;
+      <button class="btn-secondary t-nav" id="t-next" aria-label="Fase siguiente">⏭</button>
+    </div>
+    <button class="t-close" id="t-stop">Cerrar</button>`;
   document.body.appendChild(el);
   document.getElementById('t-pause').addEventListener('click', pauseTimer);
+  document.getElementById('t-prev').addEventListener('click', () => goPhase(-1));
+  document.getElementById('t-next').addEventListener('click', () => goPhase(1));
   document.getElementById('t-stop').addEventListener('click', stopTimer);
   el.addEventListener('click', ensureAudio); // cualquier tap revive el audio
   updateTimerDom();
@@ -412,8 +453,18 @@ function updateTimerDom() {
     const remainMs = T.paused ? T.remainMs : Math.max(0, T.endsAt - Date.now());
     el.querySelector('.t-phase').textContent = T.paused ? `${p.label} · pausado` : p.label;
     el.querySelector('.t-time').textContent = fmtClock(Math.ceil(remainMs / 1000));
+    document.getElementById('t-pause').style.display = '';
     document.getElementById('t-pause').textContent = T.paused ? 'Continuar' : 'Pausa';
   }
+
+  // Progreso global del ciclo completo
+  const total = totalDuration();
+  const done = Math.min(total, Math.max(0, elapsedTotal()));
+  document.getElementById('t-bar').style.width = (done / total * 100).toFixed(1) + '%';
+  document.getElementById('t-steps').textContent = T.done
+    ? `${T.phases.length} de ${T.phases.length} · ${fmtClock(total)} en total`
+    : `Fase ${T.idx + 1} de ${T.phases.length} · faltan ${fmtClock(Math.ceil(total - done))} en total`;
+  document.getElementById('t-prev').disabled = T.idx === 0 && !T.done;
   const audioEl = document.getElementById('t-audio');
   if (audioEl) {
     audioEl.textContent = (audioCtx && audioCtx.state !== 'running' && !T.done)
@@ -651,7 +702,7 @@ function renderWorkout(id) {
           <span>${e.sets} × ${esc(e.reps)}</span>
           ${e.weight ? `<span class="weight">${esc(e.weight)}</span>` : ''}
           ${e.rir ? `<span>RIR ${esc(e.rir)}</span>` : ''}
-          ${e.rest ? `<span>⏱ ${esc(e.rest)}</span>` : ''}
+          ${e.rest && !restSecs ? `<span>⏱ ${esc(e.rest)}</span>` : ''}
         </div>
         ${e.cue ? `<div class="cue">${esc(e.cue)}</div>` : ''}
         ${e.coach_note ? `<div class="coach-note">💬 ${esc(e.coach_note)}</div>` : ''}
